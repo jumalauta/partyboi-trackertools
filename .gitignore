@@ -1,0 +1,8 @@
+# Generated audio
+*.wav
+
+# OS cruft
+.DS_Store
+
+# Local tooling
+.claude/
