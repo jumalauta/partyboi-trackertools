@@ -256,4 +256,8 @@ main() {
   return $rc
 }
 
-main "$@"
+# Run main only when executed directly. When the script is sourced (e.g. by the
+# test suite) this is skipped, so individual functions can be exercised in isolation.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

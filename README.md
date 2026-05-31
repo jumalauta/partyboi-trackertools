@@ -76,6 +76,27 @@ player prefix rather than an extension. Files whose extension isn't in the known
 fall through a probe chain (libopenmpt → UADE → xmp) and use the first engine that accepts
 them. Unconvertible files are reported and the run continues.
 
+## Tests
+
+```sh
+tests/run.sh            # fast suites: routing + dispatch logic (no Docker needed)
+tests/run.sh --docker   # also run the real-image integration test
+```
+
+- **`unit_detect.sh`** — unit tests for the pure routing helpers (`detect_backend`,
+  `word_in_list`, `lc`). `convert.sh` is sourced directly; its `main` is guarded so it
+  doesn't run on source.
+- **`dispatch_stubbed.sh`** — drives `convert.sh` end-to-end with *stubbed* backends on
+  `PATH`, covering argument parsing, output naming, single/batch modes, the unknown-format
+  fallback chain, and env-var threading. No real tools or Docker required.
+- **`integration_docker.sh`** — runs the actual built image: checks the tools and UADE
+  data are present, converts a generated `.mod` (UADE), a content-`.xm` (libopenmpt) and an
+  unknown extension (fallback), and asserts the WAV headers (rate/channels/bits), including
+  a `SAMPLE_RATE=48000` override. Skips cleanly if Docker or the image is unavailable.
+
+Fixtures (a minimal valid ProTracker module, plus the stub backends) are generated on the
+fly by helpers in `tests/lib.sh` — nothing binary is committed.
+
 ## Extending
 
 The image is intentionally scoped to tracker modules. To add adjacent chip-music formats,
