@@ -58,10 +58,16 @@ assert_true "probe.wav header"  -- wav_ok probe.wav 44100 2 16
 assert_true "convert weird.zzz (fallback)" -- dr weird.zzz
 assert_true "weird.wav header"  -- wav_ok weird.wav 44100 2 16
 
-echo "schism path (IT_ENGINE=schism) renders .it"
-docker run --rm -e IT_ENGINE=schism -v "$WORK:/work" "$IMAGE" song.it >/dev/null 2>&1
-assert_file "$WORK/song.wav"    "song.wav produced by schism"
-assert_true "song.wav header (schism, 44100)" -- wav_ok song.wav 44100 2 16
+echo "schism path: .it rendered with Schism Tracker by default"
+it_log="$(dr song.it 2>&1)"
+assert_file "$WORK/song.wav"    "song.wav produced from .it"
+assert_true "song.wav header (44100)" -- wav_ok song.wav 44100 2 16
+TESTS_RUN=$((TESTS_RUN+1))
+if grep -q '\[schism\]' <<<"$it_log"; then
+  _pass ".it routed to schism (not openmpt)"
+else
+  _fail ".it should route to schism by default; got: $(grep -o '\[[a-z]*\]' <<<"$it_log" | tail -1)"
+fi
 
 echo "env override honored (SAMPLE_RATE=48000)"
 rm -f "$WORK/test.wav"

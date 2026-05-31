@@ -9,16 +9,16 @@ dispatches to the right tool.
 | Backend | Handles |
 |---------|---------|
 | **UADE** (`uade123`) | Amiga formats, incl. ProTracker `.mod` (primary). Runs the original 68k replayers through Paula emulation. Also TFMX, Future Composer, Hippel, AHX/THX, OctaMED, and hundreds more. |
-| **libopenmpt** (`openmpt123`) | PC tracker formats: XM, IT, S3M, STM, MTM, 669, FAR, ULT, PTM, DBM, AMF, PSM, MT2, GDM, DMF, MDL, J2B, OKT, … |
+| **Schism Tracker** | `.it` (Impulse Tracker) — the most faithful IT player; default for `.it`. |
+| **libopenmpt** (`openmpt123`) | Other PC tracker formats: XM, S3M, STM, MTM, 669, FAR, ULT, PTM, DBM, AMF, PSM, MT2, GDM, DMF, MDL, J2B, OKT, … |
 | **AdPlug** (`adplay`) | AdLib/OPL2 formats: RAD, D00, HSC, A2M, CMF, DRO, LDS, RIX, … |
 | **sidplayfp** | C64 SID tunes (`.sid`, `.psid`, `.rsid`) via reSIDfp emulation. |
-| **Schism Tracker** | Opt-in Impulse-Tracker-faithful IT/S3M/MOD (`IT_ENGINE=schism`). |
 | **libxmp** (`xmp`) | Fallback for anything the engines above decline. |
 
-`.mod` and other Amiga formats go to UADE by policy — its real replayer + Paula emulation
-is the most authentic rendering. Output is normalized with `sox` using bit-depth/channel
-conversion only — **never sample-rate conversion**, so no resampling artifacts are added
-beyond what the chosen engine produces.
+`.mod` and other Amiga formats go to UADE by policy (its real replayer + Paula emulation
+is the most authentic rendering), and `.it` goes to Schism Tracker. Output is normalized
+with `sox` using bit-depth/channel conversion only — **never sample-rate conversion**, so
+no resampling artifacts are added beyond what the chosen engine produces.
 
 ## Build
 
@@ -48,7 +48,7 @@ Output defaults to **44100 Hz, 16-bit, stereo**, overridable via environment var
 | `BIT_DEPTH` | `16` | Output bit depth. |
 | `HARD_TIMEOUT` | `3600` | Per-file wall-clock safety net (seconds). |
 | `UADE_TIMEOUT` | _unset_ | `uade123 -t` song timeout for endlessly-looping Amiga tunes. |
-| `IT_ENGINE` | `openmpt` | Engine for IT/S3M/MOD: `openmpt` or `schism`. |
+| `IT_ENGINE` | `auto` | `auto`: `.it`→schism. `openmpt`: `.it`→libopenmpt. `schism`: also `.s3m`/`.mod`→schism. |
 | `SID_TIMEOUT` | `180` | Render length (seconds) for SID tunes (otherwise endless). |
 
 ## Format detection

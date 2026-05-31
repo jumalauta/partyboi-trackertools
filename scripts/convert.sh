@@ -6,9 +6,10 @@
 #   * Amiga formats, including ProTracker .mod, are rendered with UADE (uade123),
 #     which runs the original 68k replay routine through Paula emulation — the most
 #     authentic reproduction of the original Amiga playback.
-#   * PC tracker formats (XM, IT, S3M, ...) are rendered with libopenmpt (openmpt123),
-#     the de-facto reference engine for those formats. Set IT_ENGINE=schism to render
-#     IT/S3M/MOD with Schism Tracker instead (Impulse-Tracker-faithful).
+#   * .it (Impulse Tracker) is rendered with Schism Tracker, the most faithful IT
+#     player. Other PC tracker formats (XM, S3M, ...) use libopenmpt (openmpt123),
+#     the de-facto reference engine. IT_ENGINE=openmpt forces .it onto libopenmpt;
+#     IT_ENGINE=schism additionally reroutes .s3m and .mod to Schism Tracker.
 #   * AdLib/OPL formats (RAD, D00, HSC, ...) are rendered with adplay (libadplug).
 #   * C64 SID tunes (.sid) are rendered with sidplayfp (reSIDfp emulation).
 #   * xmp (libxmp) is a last-resort fallback for anything the engines above decline.
@@ -28,7 +29,8 @@
 #   HARD_TIMEOUT  per-file wall-clock safety net (s)  (default 3600)
 #   UADE_TIMEOUT  pass-through uade123 -t song timeout (default: unset = until song end)
 #   UADE_OPTS     extra raw options appended to uade123 invocation (advanced)
-#   IT_ENGINE     engine for IT/S3M/MOD: openmpt (default) | schism
+#   IT_ENGINE     auto (default): .it -> schism, .s3m/.mod -> openmpt/uade
+#                 openmpt: .it -> libopenmpt;  schism: .s3m/.mod -> schism too
 #   SID_TIMEOUT   render length in seconds for SID tunes (default 180; SIDs are endless)
 
 set -euo pipefail
@@ -39,7 +41,7 @@ BIT_DEPTH="${BIT_DEPTH:-16}"
 HARD_TIMEOUT="${HARD_TIMEOUT:-3600}"
 UADE_TIMEOUT="${UADE_TIMEOUT:-}"
 UADE_OPTS="${UADE_OPTS:-}"
-IT_ENGINE="${IT_ENGINE:-openmpt}"
+IT_ENGINE="${IT_ENGINE:-auto}"
 SID_TIMEOUT="${SID_TIMEOUT:-180}"
 
 prog="$(basename "$0")"
@@ -98,8 +100,8 @@ Usage:
 
 Backends:
   uade123     Amiga formats incl. .mod (authentic Paula/68k replay)  [PRIMARY]
-  openmpt123  PC tracker formats (XM, IT, S3M, ...)  [libopenmpt reference]
-  schism      IT/S3M/MOD, Impulse-Tracker-faithful  [opt-in: IT_ENGINE=schism]
+  openmpt123  PC tracker formats (XM, S3M, ...)  [libopenmpt reference]
+  schism      .it always; +.s3m/.mod with IT_ENGINE=schism  [IT-faithful]
   adplay      AdLib/OPL formats (RAD, D00, HSC, ...)  [libadplug]
   sidplayfp   C64 SID tunes (.sid)  [reSIDfp]
   xmp         fallback for anything the above decline
@@ -148,8 +150,13 @@ detect_backend() {
     echo uade; return 0
   fi
   if word_in_list "$suffix" $OPENMPT_FORMATS; then
-    # Optionally render IT/S3M with Schism Tracker (Impulse-Tracker-faithful).
-    if [[ "$IT_ENGINE" == "schism" ]] && word_in_list "$suffix" it s3m; then
+    # .it is always rendered with Schism Tracker (the Impulse-Tracker-faithful
+    # reference). IT_ENGINE=openmpt overrides this to fall back to libopenmpt.
+    if word_in_list "$suffix" it && [[ "$IT_ENGINE" != "openmpt" ]]; then
+      echo schism; return 0
+    fi
+    # S3M can also opt into Schism via IT_ENGINE=schism.
+    if [[ "$IT_ENGINE" == "schism" ]] && word_in_list "$suffix" s3m; then
       echo schism; return 0
     fi
     echo openmpt; return 0
