@@ -20,6 +20,7 @@ fi
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 make_mod "$WORK/test.mod"
+make_it  "$WORK/song.it"                  # for the schism (IT-faithful) path
 cp "$WORK/test.mod" "$WORK/probe.xm"      # MOD content; content-detected by openmpt
 cp "$WORK/test.mod" "$WORK/weird.zzz"     # unknown ext -> fallback chain
 
@@ -35,9 +36,12 @@ wav_ok() {
 }
 
 echo "tools present in image"
-assert_true "uade123 runs"    -- docker run --rm --entrypoint uade123    "$IMAGE" --version
-assert_true "openmpt123 runs" -- docker run --rm --entrypoint openmpt123 "$IMAGE" --version
-assert_true "xmp runs"        -- docker run --rm --entrypoint xmp        "$IMAGE" --version
+assert_true "uade123 runs"      -- docker run --rm --entrypoint uade123      "$IMAGE" --version
+assert_true "openmpt123 runs"   -- docker run --rm --entrypoint openmpt123   "$IMAGE" --version
+assert_true "xmp runs"          -- docker run --rm --entrypoint xmp          "$IMAGE" --version
+assert_true "adplay present"    -- docker run --rm --entrypoint adplay       "$IMAGE" --version
+assert_true "sidplayfp present" -- docker run --rm --entrypoint sidplayfp    "$IMAGE" --help
+assert_true "schism present"    -- docker run --rm --entrypoint schismtracker "$IMAGE" --version
 
 echo "UADE eagleplayer data shipped"
 assert_true "uade.conf present" -- \
@@ -53,6 +57,11 @@ assert_true "probe.wav header"  -- wav_ok probe.wav 44100 2 16
 
 assert_true "convert weird.zzz (fallback)" -- dr weird.zzz
 assert_true "weird.wav header"  -- wav_ok weird.wav 44100 2 16
+
+echo "schism path (IT_ENGINE=schism) renders .it"
+docker run --rm -e IT_ENGINE=schism -v "$WORK:/work" "$IMAGE" song.it >/dev/null 2>&1
+assert_file "$WORK/song.wav"    "song.wav produced by schism"
+assert_true "song.wav header (schism, 44100)" -- wav_ok song.wav 44100 2 16
 
 echo "env override honored (SAMPLE_RATE=48000)"
 rm -f "$WORK/test.wav"

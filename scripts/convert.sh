@@ -7,8 +7,11 @@
 #     which runs the original 68k replay routine through Paula emulation — the most
 #     authentic reproduction of the original Amiga playback.
 #   * PC tracker formats (XM, IT, S3M, ...) are rendered with libopenmpt (openmpt123),
-#     the de-facto reference engine for those formats.
-#   * xmp (libxmp) is a last-resort fallback for anything the two above decline.
+#     the de-facto reference engine for those formats. Set IT_ENGINE=schism to render
+#     IT/S3M/MOD with Schism Tracker instead (Impulse-Tracker-faithful).
+#   * AdLib/OPL formats (RAD, D00, HSC, ...) are rendered with adplay (libadplug).
+#   * C64 SID tunes (.sid) are rendered with sidplayfp (reSIDfp emulation).
+#   * xmp (libxmp) is a last-resort fallback for anything the engines above decline.
 #
 # All backends render at the target sample rate natively; the only post-processing is a
 # bit-depth / channel-count normalization with sox at the SAME sample rate (no resampling).
@@ -25,6 +28,8 @@
 #   HARD_TIMEOUT  per-file wall-clock safety net (s)  (default 3600)
 #   UADE_TIMEOUT  pass-through uade123 -t song timeout (default: unset = until song end)
 #   UADE_OPTS     extra raw options appended to uade123 invocation (advanced)
+#   IT_ENGINE     engine for IT/S3M/MOD: openmpt (default) | schism
+#   SID_TIMEOUT   render length in seconds for SID tunes (default 180; SIDs are endless)
 
 set -euo pipefail
 
@@ -34,6 +39,8 @@ BIT_DEPTH="${BIT_DEPTH:-16}"
 HARD_TIMEOUT="${HARD_TIMEOUT:-3600}"
 UADE_TIMEOUT="${UADE_TIMEOUT:-}"
 UADE_OPTS="${UADE_OPTS:-}"
+IT_ENGINE="${IT_ENGINE:-openmpt}"
+SID_TIMEOUT="${SID_TIMEOUT:-180}"
 
 prog="$(basename "$0")"
 
@@ -67,6 +74,19 @@ xm it s3m stm s3z mtm 669 far ult ptm dbm amf psm mt2 umx gdm dmf mdl
 j2b ams dsm dtm plm okt imf mptm itp mo3 ptp v2m sfx
 "
 
+# AdLib / OPL formats → adplay (libadplug). Only clearly-OPL extensions are listed,
+# to avoid clobbering overlapping names already claimed above (e.g. .imf -> openmpt,
+# .sng -> uade).
+ADPLAY_FORMATS="
+rad a2m amd d00 hsc cmf bam dro ksm laa rol sa2 sat sci xad xsm
+adl mad mtk dmo hsp lds rix sop
+"
+
+# C64 SID tunes → sidplayfp
+SID_FORMATS="
+sid psid rsid mus
+"
+
 usage() {
   cat <<EOF
 $prog — convert tracker modules to WAV (accuracy-first tool selection)
@@ -79,6 +99,9 @@ Usage:
 Backends:
   uade123     Amiga formats incl. .mod (authentic Paula/68k replay)  [PRIMARY]
   openmpt123  PC tracker formats (XM, IT, S3M, ...)  [libopenmpt reference]
+  schism      IT/S3M/MOD, Impulse-Tracker-faithful  [opt-in: IT_ENGINE=schism]
+  adplay      AdLib/OPL formats (RAD, D00, HSC, ...)  [libadplug]
+  sidplayfp   C64 SID tunes (.sid)  [reSIDfp]
   xmp         fallback for anything the above decline
 
 Output is ${SAMPLE_RATE} Hz / ${BIT_DEPTH}-bit / ${CHANNELS} ch WAV.
@@ -98,7 +121,7 @@ word_in_list() {
 
 lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
-# detect_backend <filepath> -> echoes: uade | openmpt | "" (unknown)
+# detect_backend <filepath> -> echoes: uade | openmpt | schism | adplay | sid | "" (unknown)
 detect_backend() {
   local f base low suffix prefix
   f="$1"
@@ -109,10 +132,26 @@ detect_backend() {
   # Files with no dot: suffix == prefix == whole name; treat as prefix match only.
   [[ "$low" != *.* ]] && suffix=""
 
+  # C64 SID and AdLib/OPL are unambiguous, extension-driven — check them first.
+  if word_in_list "$suffix" $SID_FORMATS; then
+    echo sid; return 0
+  fi
+  if word_in_list "$suffix" $ADPLAY_FORMATS; then
+    echo adplay; return 0
+  fi
+
   if word_in_list "$prefix" $UADE_FORMATS || word_in_list "$suffix" $UADE_FORMATS; then
+    # IT_ENGINE=schism reroutes the IT-family of Amiga-shared names (.mod) to schism.
+    if [[ "$IT_ENGINE" == "schism" ]] && word_in_list "$suffix" mod; then
+      echo schism; return 0
+    fi
     echo uade; return 0
   fi
   if word_in_list "$suffix" $OPENMPT_FORMATS; then
+    # Optionally render IT/S3M with Schism Tracker (Impulse-Tracker-faithful).
+    if [[ "$IT_ENGINE" == "schism" ]] && word_in_list "$suffix" it s3m; then
+      echo schism; return 0
+    fi
     echo openmpt; return 0
   fi
   echo ""; return 0
@@ -160,6 +199,34 @@ render_xmp() {
   timeout "$HARD_TIMEOUT" xmp -o "$out" -f "$SAMPLE_RATE" -- "$in"
 }
 
+render_adplay() {
+  local in="$1" out="$2"
+  # adplay disk writer: -O disk selects it, -d is the output file (RIFF WAVE),
+  # -f the sample rate, --16bit the sample quality. -o plays once (no loop).
+  timeout "$HARD_TIMEOUT" adplay -O disk -d "$out" -f "$SAMPLE_RATE" --16bit -o "$in"
+}
+
+render_sidplayfp() {
+  local in="$1" out="$2"
+  # sidplayfp: -w<file> writes a WAV, -f<rate> the frequency, -os a single track
+  # (no looping), -t<sec> a finite length (SID tunes are otherwise endless).
+  timeout "$HARD_TIMEOUT" sidplayfp \
+    "-f${SAMPLE_RATE}" "-t${SID_TIMEOUT}" -os "-w${out}" "$in"
+}
+
+render_schism() {
+  local in="$1" out="$2" cfgdir
+  # Schism Tracker has no CLI sample-rate flag — it reads its config — so seed the
+  # config with the requested mixing rate (keeps the no-resample guarantee), then run
+  # headless with dummy SDL drivers and --diskwrite (WAV chosen by the .wav extension).
+  cfgdir="${XDG_CONFIG_HOME:-$HOME/.config}/schism"
+  mkdir -p "$cfgdir"
+  printf '[Audio]\nmixing_rate=%s\n[Mixer]\nsample_rate=%s\n' \
+    "$SAMPLE_RATE" "$SAMPLE_RATE" > "$cfgdir/config"
+  timeout "$HARD_TIMEOUT" schismtracker \
+    --audio-driver=dummy --video-driver=dummy --diskwrite="$out" "$in"
+}
+
 # normalize <src.wav> <dst.wav> : enforce bit depth + channels, NO sample-rate change.
 normalize() {
   local src="$1" dst="$2"
@@ -180,9 +247,12 @@ convert_one() {
   attempt() {
     local b="$1"
     case "$b" in
-      uade)    render_uade    "$in" "$raw" ;;
-      openmpt) render_openmpt "$in" "$raw" ;;
-      xmp)     render_xmp     "$in" "$raw" ;;
+      uade)    render_uade      "$in" "$raw" ;;
+      openmpt) render_openmpt   "$in" "$raw" ;;
+      schism)  render_schism    "$in" "$raw" ;;
+      adplay)  render_adplay    "$in" "$raw" ;;
+      sid)     render_sidplayfp "$in" "$raw" ;;
+      xmp)     render_xmp       "$in" "$raw" ;;
     esac
   }
 

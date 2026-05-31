@@ -63,15 +63,28 @@ RUN git clone --depth 1 https://github.com/dv1/uade.git \
 FROM debian:bookworm-slim
 
 LABEL org.opencontainers.image.title="partyboi-trackertools" \
-      org.opencontainers.image.description="Accurate tracker module to WAV conversion (UADE + libopenmpt + libxmp)" \
+      org.opencontainers.image.description="Accurate tracker module to WAV conversion (UADE + libopenmpt + libxmp + adplug + sidplayfp + schism)" \
       org.opencontainers.image.source="partyboi-trackertools"
 
+# Runtime engines from apt:
+#   openmpt123  PC tracker formats        xmp        fallback
+#   adplay      AdLib/OPL (libadplug)     sidplayfp  C64 SID (reSIDfp)
+#   schism      IT-faithful (pkg 'schism', binary 'schismtracker'; uses dummy SDL)
+#   sox         WAV bit-depth/channel normalization
+#   libao4      UADE's runtime audio backend
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openmpt123 \
         xmp \
+        adplay \
+        sidplayfp \
+        schism \
         sox \
         libao4 \
     && rm -rf /var/lib/apt/lists/*
+
+# Schism Tracker reads/writes its config under $HOME; make sure it is set and writable
+# so headless --diskwrite works regardless of the runtime UID's home.
+ENV HOME=/root XDG_CONFIG_HOME=/root/.config
 
 # Bring in UADE + its from-source deps: binaries, libs, and — crucially — UADE's
 # runtime data (eagleplayers / score / uade.conf) under /usr/local/share/uade.

@@ -72,6 +72,28 @@ open(sys.argv[1], 'wb').write(bytes(d))
 PY
 }
 
+# make_it <path> : write a minimal valid empty Impulse Tracker (.it) module —
+# 'IMPM' magic, zero orders/instruments/samples/patterns. Plays as silence; enough
+# to exercise the schism/libopenmpt loaders.
+make_it() {
+  local out="$1"
+  python3 - "$out" <<'PY'
+import struct, sys
+d = bytearray(b'IMPM')
+d += b'partyboi it'.ljust(26, b'\x00')             # song name (26)
+d += struct.pack('<H', 0)                           # pattern row highlight
+d += struct.pack('<HHHH', 0, 0, 0, 0)               # Ord/Ins/Smp/Pat counts
+d += struct.pack('<HH', 0x0214, 0x0214)             # created/compat tracker version
+d += struct.pack('<HH', 0, 0)                        # flags, special
+d += bytes([128, 48, 125, 6, 0, 0])                 # GV, MV, IS, IT, Sep, PWD
+d += struct.pack('<H', 0)                            # message length
+d += struct.pack('<I', 0)                            # message offset
+d += struct.pack('<I', 0)                            # reserved
+d += bytes(64) + bytes(64)                           # channel pan + volume tables
+open(sys.argv[1], 'wb').write(bytes(d))
+PY
+}
+
 # make_stub_backends <bindir> : create fake uade123/openmpt123/xmp/sox/timeout that
 # emit a tiny valid-enough WAV to their output path, so convert.sh logic can be tested
 # end-to-end without the real tools or Docker. Each records its name into $STUB_LOG.
@@ -119,6 +141,30 @@ EOF
 echo xmp >> "${STUB_LOG:-/dev/null}"
 out=""; prev=""
 for a in "$@"; do [[ "$prev" == "-o" ]] && out="$a"; prev="$a"; done
+[[ -n "$out" ]] && _wavbytes "$out"
+EOF
+
+  cat > "$bin/adplay" <<'EOF'
+#!/usr/bin/env bash
+echo adplay >> "${STUB_LOG:-/dev/null}"
+out=""; prev=""
+for a in "$@"; do [[ "$prev" == "-d" ]] && out="$a"; prev="$a"; done
+[[ -n "$out" ]] && _wavbytes "$out"
+EOF
+
+  cat > "$bin/sidplayfp" <<'EOF'
+#!/usr/bin/env bash
+echo sid >> "${STUB_LOG:-/dev/null}"
+out=""
+for a in "$@"; do [[ "$a" == -w* ]] && out="${a#-w}"; done
+[[ -n "$out" ]] && _wavbytes "$out"
+EOF
+
+  cat > "$bin/schismtracker" <<'EOF'
+#!/usr/bin/env bash
+echo schism >> "${STUB_LOG:-/dev/null}"
+out=""
+for a in "$@"; do [[ "$a" == --diskwrite=* ]] && out="${a#--diskwrite=}"; done
 [[ -n "$out" ]] && _wavbytes "$out"
 EOF
 

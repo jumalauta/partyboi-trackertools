@@ -48,6 +48,29 @@ assert_file "$W/out/a.wav"    "batch: a.wav"
 assert_file "$W/out/b.wav"    "batch: b.wav"
 assert_file "$W/out/tfmx.wav" "batch: tfmx.wav (prefix-named)"
 
+echo "adplay routing: AdLib/OPL extension"
+W="$WORKROOT/caseA"; mkdir -p "$W"; make_mod "$W/song.rad"   # content irrelevant for stub
+run_convert "$W/song.rad"
+assert_file "$W/song.wav" "song.wav produced"
+assert_eq adplay "$(backend_used)" "  .rad routed to adplay"
+
+echo "sidplayfp routing: .sid extension"
+W="$WORKROOT/caseS"; mkdir -p "$W"; make_mod "$W/chip.sid"
+run_convert "$W/chip.sid"
+assert_file "$W/chip.wav" "chip.wav produced"
+assert_eq sid "$(backend_used)" "  .sid routed to sidplayfp"
+
+echo "schism routing: IT_ENGINE=schism reroutes .it"
+W="$WORKROOT/caseSch"; mkdir -p "$W"; make_mod "$W/tune.it"
+IT_ENGINE=schism run_convert "$W/tune.it"
+assert_file "$W/tune.wav" "tune.wav produced"
+assert_eq schism "$(backend_used)" "  IT_ENGINE=schism: .it routed to schism"
+
+echo "default IT routing unchanged (openmpt) when IT_ENGINE unset"
+W="$WORKROOT/caseIT"; mkdir -p "$W"; make_mod "$W/d.it"
+run_convert "$W/d.it"
+assert_eq openmpt "$(backend_used)" "  default: .it still routed to openmpt"
+
 echo "fallback chain: unknown extension, content recognized by openmpt"
 W="$WORKROOT/case5"; mkdir -p "$W"; make_mod "$W/mystery.zzz"
 run_convert "$W/mystery.zzz"
